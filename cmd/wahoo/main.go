@@ -157,18 +157,31 @@ func joinModules(modules []scaffold.Module) string {
 }
 
 func tidyProject(directory string) error {
+	var commands [][]string
 	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
-	if _, err := os.Stat(goBin); err != nil {
-		goBin = "go"
+	if _, err := os.Stat(goBin); err == nil {
+		commands = append(commands, []string{goBin})
 	}
-	command := exec.Command(goBin, "mod", "tidy")
-	command.Dir = directory
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("tidy Go module: %w", err)
+	commands = append(commands, []string{"go"})
+	if _, err := exec.LookPath("mise"); err == nil {
+		commands = append(commands, []string{"mise", "exec", "go@1.25.12", "--", "go"})
 	}
-	return nil
+
+	var errs []error
+	for _, command := range commands {
+		args := append(command[1:], "mod", "tidy")
+		cmd := exec.Command(command[0], args...)
+		cmd.Dir = directory
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		if detail := strings.TrimSpace(string(output)); detail != "" {
+			err = fmt.Errorf("%w: %s", err, detail)
+		}
+		errs = append(errs, err)
+	}
+	return fmt.Errorf("tidy Go module: %w", errors.Join(errs...))
 }
 
 func usageError() error {
