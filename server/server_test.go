@@ -36,3 +36,24 @@ func TestPage(t *testing.T) {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestRequestID(t *testing.T) {
+	t.Parallel()
+	if got := requestID("request_123.abc"); got != "request_123.abc" {
+		t.Fatalf("requestID() = %q, want supplied value", got)
+	}
+	if got := requestID("invalid value"); !validRequestID(got) || got == "invalid value" {
+		t.Fatalf("requestID() = %q, want generated valid value", got)
+	}
+}
+
+func TestBoundedLogValue(t *testing.T) {
+	t.Parallel()
+	value := make([]byte, maxLogValueLength+1)
+	for i := range value {
+		value[i] = 'a'
+	}
+	if got := boundedLogValue(string(value)); len(got) != maxLogValueLength+3 {
+		t.Fatalf("boundedLogValue length = %d, want %d", len(got), maxLogValueLength+3)
+	}
+}

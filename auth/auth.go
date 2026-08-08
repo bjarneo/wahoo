@@ -17,6 +17,8 @@ var (
 	ErrTokenInvalid       = errors.New("token invalid")
 )
 
+const dummyPasswordHash = "$2a$10$nwEFPH4gVgWZBOOw/fEi5e1Vy9LK.AYICiUc5zSWvdyT/75zjwFQy"
+
 // User is the minimum identity needed by the built-in auth flows.
 type User struct {
 	ID            string    `json:"id"`
@@ -56,7 +58,11 @@ func CheckPassword(hash, password string) bool {
 // VerifyLogin returns a user only when the email and password are valid.
 func VerifyLogin(ctx context.Context, store Store, email, password string) (*User, error) {
 	user, err := store.FindUserByEmail(ctx, email)
-	if err != nil || user == nil || !CheckPassword(user.PasswordHash, password) {
+	if err != nil || user == nil {
+		_ = bcrypt.CompareHashAndPassword([]byte(dummyPasswordHash), []byte(password))
+		return nil, ErrInvalidCredentials
+	}
+	if !CheckPassword(user.PasswordHash, password) {
 		return nil, ErrInvalidCredentials
 	}
 	return user, nil

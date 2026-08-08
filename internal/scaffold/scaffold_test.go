@@ -92,6 +92,23 @@ func TestAdd(t *testing.T) {
 	}
 }
 
+func TestAddRejectsManagedSymlink(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "acme")
+	if err := Create(directory, "example.com/acme", "/framework"); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.RemoveAll(filepath.Join(directory, "app")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(directory, "app")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(directory, ModuleSSE); err == nil {
+		t.Fatal("Add() returned nil for a managed symlink")
+	}
+}
+
 func TestCreateRejectsNonEmptyDirectory(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()

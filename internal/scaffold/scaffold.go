@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -92,7 +93,10 @@ func Create(directory, module, frameworkPath string, modules ...Module) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(directory); err == nil {
+	if info, err := os.Lstat(directory); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("project directory %s must not be a symbolic link", directory)
+		}
 		entries, readErr := os.ReadDir(directory)
 		if readErr != nil {
 			return fmt.Errorf("inspect %s: %w", directory, readErr)
@@ -146,7 +150,12 @@ func Create(directory, module, frameworkPath string, modules ...Module) error {
 	if err != nil {
 		return fmt.Errorf("scaffold project: %w", err)
 	}
-	if err := writeManifest(directory, manifest{}); err != nil {
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return fmt.Errorf("open project root: %w", err)
+	}
+	defer root.Close()
+	if err := writeManifest(root, manifest{}); err != nil {
 		return err
 	}
 	if len(modules) == 0 {
@@ -165,12 +174,27 @@ func Add(directory string, modules ...Module) error {
 		return errors.New("at least one module is required")
 	}
 
-	project, err := readManifest(directory)
+	info, err := os.Lstat(directory)
+	if err != nil {
+		return fmt.Errorf("inspect project directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("project directory %s must not be a symbolic link", directory)
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return fmt.Errorf("open project root: %w", err)
+	}
+	defer root.Close()
+	if err := rejectManagedSymlinks(root); err != nil {
+		return err
+	}
+
+	project, err := readManifest(root)
 	if err != nil {
 		return err
 	}
-	routesPath := filepath.Join(directory, "app", "routes.go")
-	routes, err := os.ReadFile(routesPath)
+	routes, err := root.ReadFile("app/routes.go")
 	if err != nil {
 		return fmt.Errorf("read application routes: %w", err)
 	}
@@ -184,9 +208,8 @@ func Add(directory string, modules ...Module) error {
 			continue
 		}
 		spec := moduleSpecs[module]
-		target := filepath.Join(directory, filepath.FromSlash(spec.target))
-		if _, err := os.Stat(target); err == nil {
-			return fmt.Errorf("module %q target already exists: %s", module, target)
+		if _, err := root.Lstat(spec.target); err == nil {
+			return fmt.Errorf("module %q target already exists: %s", module, spec.target)
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("inspect module %q target: %w", module, err)
 		}
@@ -198,27 +221,42 @@ func Add(directory string, modules ...Module) error {
 
 	for _, module := range additions {
 		spec := moduleSpecs[module]
-		target := filepath.Join(directory, filepath.FromSlash(spec.target))
 		data, err := fs.ReadFile(templates, spec.template)
 		if err != nil {
 			return fmt.Errorf("read module %q template: %w", module, err)
 		}
-		if err := os.WriteFile(target, data, 0o644); err != nil {
+		if err := writeNewFile(root, spec.target, data, 0o644); err != nil {
 			return fmt.Errorf("write module %q: %w", module, err)
 		}
 		routes = []byte(strings.Replace(string(routes), moduleMarker, spec.registration+moduleMarker, 1))
 		project.Modules = append(project.Modules, module)
 	}
-	if err := os.WriteFile(routesPath, routes, 0o644); err != nil {
+	if err := writeAtomic(root, "app/routes.go", routes, 0o644); err != nil {
 		return fmt.Errorf("write application routes: %w", err)
 	}
-	return writeManifest(directory, project)
+	return writeManifest(root, project)
 }
 
-func readManifest(directory string) (manifest, error) {
-	data, err := os.ReadFile(filepath.Join(directory, ".wahoo", "modules.json"))
+func rejectManagedSymlinks(root *os.Root) error {
+	for _, path := range []string{"app", ".wahoo", "app/routes.go", ".wahoo/modules.json"} {
+		info, err := root.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect managed path %s: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("managed path %s must not be a symbolic link", path)
+		}
+	}
+	return nil
+}
+
+func readManifest(root *os.Root) (manifest, error) {
+	data, err := root.ReadFile(".wahoo/modules.json")
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return manifest{}, errors.New("not a Wahoo project: .wahoo/modules.json is missing")
 		}
 		return manifest{}, fmt.Errorf("read module manifest: %w", err)
@@ -235,12 +273,11 @@ func readManifest(directory string) (manifest, error) {
 	return project, nil
 }
 
-func writeManifest(directory string, project manifest) error {
+func writeManifest(root *os.Root, project manifest) error {
 	if project.Modules == nil {
 		project.Modules = []Module{}
 	}
-	directory = filepath.Join(directory, ".wahoo")
-	if err := os.MkdirAll(directory, 0o755); err != nil {
+	if err := root.MkdirAll(".wahoo", 0o755); err != nil {
 		return fmt.Errorf("create module manifest directory: %w", err)
 	}
 	data, err := json.MarshalIndent(project, "", "  ")
@@ -248,10 +285,44 @@ func writeManifest(directory string, project manifest) error {
 		return fmt.Errorf("encode module manifest: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(filepath.Join(directory, "modules.json"), data, 0o644); err != nil {
+	if err := writeAtomic(root, ".wahoo/modules.json", data, 0o644); err != nil {
 		return fmt.Errorf("write module manifest: %w", err)
 	}
 	return nil
+}
+
+func writeNewFile(root *os.Root, path string, data []byte, perm fs.FileMode) error {
+	file, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if written, err := file.Write(data); err != nil {
+		return err
+	} else if written != len(data) {
+		return io.ErrShortWrite
+	}
+	return nil
+}
+
+func writeAtomic(root *os.Root, path string, data []byte, perm fs.FileMode) error {
+	temporary := path + ".wahoo.tmp"
+	file, err := root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	defer root.Remove(temporary)
+	if written, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	} else if written != len(data) {
+		file.Close()
+		return io.ErrShortWrite
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return root.Rename(temporary, path)
 }
 
 func moduleList(modules []Module) string {

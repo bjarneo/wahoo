@@ -2,9 +2,16 @@ package realtime
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
+)
+
+const (
+	defaultMaxMessageBytes = 1 << 20
+	defaultConnectionAge   = 15 * time.Minute
 )
 
 // WebSocketHandler receives a connected WebSocket and owns its read/write
@@ -20,8 +27,11 @@ func WebSocket(handler WebSocketHandler, options *websocket.AcceptOptions) http.
 			return
 		}
 		defer conn.Close(websocket.StatusNormalClosure, "")
-		if err := handler(r.Context(), conn); err != nil {
-			_ = conn.Close(websocket.StatusInternalError, err.Error())
+		conn.SetReadLimit(defaultMaxMessageBytes)
+		ctx, cancel := context.WithTimeout(r.Context(), defaultConnectionAge)
+		defer cancel()
+		if err := handler(ctx, conn); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			_ = conn.Close(websocket.StatusInternalError, "internal server error")
 		}
 	})
 }

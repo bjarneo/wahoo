@@ -90,10 +90,15 @@ func newProject(args []string) error {
 	if err := tidyProject(directory); err != nil {
 		return err
 	}
+	if *local {
+		if err := vendorProject(directory); err != nil {
+			return err
+		}
+	}
 	fmt.Printf("created %s\n", directory)
 	fmt.Println("next steps:")
 	fmt.Printf("  cd %s\n", flags.Arg(0))
-	fmt.Println("  npm install --prefix web")
+	fmt.Println("  npm ci --prefix web")
 	fmt.Println("  npm run dev --prefix web")
 	return nil
 }
@@ -115,6 +120,15 @@ func addModules(args []string) error {
 	}
 	if err := tidyProject(directory); err != nil {
 		return err
+	}
+	usesLocalFramework, err := usesLocalFramework(directory)
+	if err != nil {
+		return err
+	}
+	if usesLocalFramework {
+		if err := vendorProject(directory); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("added modules to %s: %s\n", directory, joinModules(modules))
 	return nil
@@ -157,6 +171,14 @@ func joinModules(modules []scaffold.Module) string {
 }
 
 func tidyProject(directory string) error {
+	return runGoModuleCommand(directory, "tidy")
+}
+
+func vendorProject(directory string) error {
+	return runGoModuleCommand(directory, "vendor")
+}
+
+func runGoModuleCommand(directory, operation string) error {
 	var commands [][]string
 	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
 	if _, err := os.Stat(goBin); err == nil {
@@ -169,7 +191,7 @@ func tidyProject(directory string) error {
 
 	var errs []error
 	for _, command := range commands {
-		args := append(command[1:], "mod", "tidy")
+		args := append(command[1:], "mod", operation)
 		cmd := exec.Command(command[0], args...)
 		cmd.Dir = directory
 		output, err := cmd.CombinedOutput()
@@ -181,7 +203,15 @@ func tidyProject(directory string) error {
 		}
 		errs = append(errs, err)
 	}
-	return fmt.Errorf("tidy Go module: %w", errors.Join(errs...))
+	return fmt.Errorf("%s Go module: %w", operation, errors.Join(errs...))
+}
+
+func usesLocalFramework(directory string) (bool, error) {
+	goMod, err := os.ReadFile(filepath.Join(directory, "go.mod"))
+	if err != nil {
+		return false, fmt.Errorf("read Go module: %w", err)
+	}
+	return strings.Contains(string(goMod), "replace github.com/bjarneo/wahoo =>"), nil
 }
 
 func usageError() error {

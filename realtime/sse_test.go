@@ -8,13 +8,26 @@ import (
 func TestWriteEventEscapesLineBreaks(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
-	writeEvent(&out, Event{
+	if err := writeEvent(&out, Event{
 		ID:   "1\nevil",
 		Name: "update\r\nevil",
 		Data: []byte("first\n\nevent: injected"),
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	const want = "id: 1evil\nevent: updateevil\ndata: first\ndata: \ndata: event: injected\n\n"
 	if got := out.String(); got != want {
 		t.Fatalf("writeEvent() = %q, want %q", got, want)
+	}
+}
+
+func TestHubDefaults(t *testing.T) {
+	t.Parallel()
+	hub := NewHub()
+	if hub.maxClients != defaultMaxClients {
+		t.Fatalf("max clients = %d, want %d", hub.maxClients, defaultMaxClients)
+	}
+	if hub.maxStreamAge != defaultMaxStreamAge {
+		t.Fatalf("max stream age = %s, want %s", hub.maxStreamAge, defaultMaxStreamAge)
 	}
 }

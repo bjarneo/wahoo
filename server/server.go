@@ -3,6 +3,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +72,11 @@ type Server struct {
 	renderer Renderer
 }
 
+const (
+	maxRequestIDLength = 128
+	maxLogValueLength  = 2048
+)
+
 // New creates a server with production-safe timeout defaults.
 func New(config Config) *Server {
 	config = config.withDefaults()
@@ -99,7 +106,7 @@ func (s *Server) Page(pattern string) error {
 	s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		document, err := s.renderer.Render(r.Context(), r)
 		if err != nil {
-			s.config.Logger.Error("render page", "path", r.URL.Path, "err", err)
+			s.config.Logger.Error("render page", "path", boundedLogValue(r.URL.Path), "err", err)
 			http.Error(w, "rendering failed", http.StatusInternalServerError)
 			return
 		}
@@ -112,19 +119,47 @@ func (s *Server) Page(pattern string) error {
 // ServeHTTP applies request ID, recovery, and access logging middleware.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
-	requestID := r.Header.Get("X-Request-ID")
-	if requestID == "" {
-		requestID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
+	requestID := requestID(r.Header.Get("X-Request-ID"))
 	w.Header().Set("X-Request-ID", requestID)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			s.config.Logger.Error("panic recovered", "request_id", requestID, "panic", recovered)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 		}
-		s.config.Logger.Info("request completed", "request_id", requestID, "method", r.Method, "path", r.URL.Path, "duration_ms", time.Since(started).Milliseconds())
+		s.config.Logger.Info("request completed", "request_id", requestID, "method", r.Method, "path", boundedLogValue(r.URL.Path), "duration_ms", time.Since(started).Milliseconds())
 	}()
 	s.mux.ServeHTTP(w, r)
+}
+
+func requestID(value string) string {
+	if validRequestID(value) {
+		return value
+	}
+	var data [16]byte
+	if _, err := rand.Read(data[:]); err == nil {
+		return hex.EncodeToString(data[:])
+	}
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+func validRequestID(value string) bool {
+	if value == "" || len(value) > maxRequestIDLength {
+		return false
+	}
+	for i := range value {
+		char := value[i]
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' && char != '_' && char != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+func boundedLogValue(value string) string {
+	if len(value) <= maxLogValueLength {
+		return value
+	}
+	return value[:maxLogValueLength] + "..."
 }
 
 // HTTPServer returns the configured net/http server. It is useful when an

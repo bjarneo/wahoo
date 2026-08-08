@@ -1,6 +1,8 @@
 package app
 
 import (
+	"net/http"
+
 	"github.com/bjarneo/wahoo/realtime"
 	"github.com/bjarneo/wahoo/server"
 )
@@ -9,5 +11,9 @@ import (
 var Events = realtime.NewHub()
 
 func registerSSE(runtime *server.Server) {
-	runtime.Handle("GET /events", Events)
+	runtime.HandleFunc("GET /events", sseNotConfigured)
+}
+
+func sseNotConfigured(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "configure authentication and tenant authorization before enabling SSE", http.StatusNotImplemented)
 }

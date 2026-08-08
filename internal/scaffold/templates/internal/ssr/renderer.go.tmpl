@@ -7,7 +7,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 )
+
+const maxDocumentBytes = 2 << 20
+
+var client = &http.Client{Timeout: 5 * time.Second}
 
 // Renderer asks the React SSR worker for a document. It falls back to a
 // client-rendered shell while the worker is unavailable, which keeps health
@@ -38,12 +43,12 @@ func (r Renderer) Render(ctx context.Context, request *http.Request) (string, er
 		}
 		upstream.Header.Set("X-Wahoo-SSR", "1")
 		upstream.Header.Set("Cookie", request.Header.Get("Cookie"))
-		response, err := http.DefaultClient.Do(upstream)
+		response, err := client.Do(upstream)
 		if err == nil {
 			defer response.Body.Close()
 			if response.StatusCode < 400 {
-				body, readErr := io.ReadAll(response.Body)
-				if readErr == nil {
+				body, readErr := io.ReadAll(io.LimitReader(response.Body, maxDocumentBytes+1))
+				if readErr == nil && len(body) <= maxDocumentBytes {
 					return string(body), nil
 				}
 			}

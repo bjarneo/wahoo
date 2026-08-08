@@ -30,3 +30,10 @@ func TestNewToken(t *testing.T) {
 		t.Fatal("expected distinct opaque tokens")
 	}
 }
+
+func TestDummyPasswordHash(t *testing.T) {
+	t.Parallel()
+	if !CheckPassword(dummyPasswordHash, "password") {
+		t.Fatal("dummy password hash does not verify")
+	}
+}

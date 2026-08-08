@@ -1,10 +1,15 @@
 package app
 
 import (
-	"github.com/bjarneo/wahoo/realtime"
+	"net/http"
+
 	"github.com/bjarneo/wahoo/server"
 )
 
 func registerWebSocket(runtime *server.Server) {
-	runtime.Handle("GET /ws", realtime.WebSocket(realtime.Echo(), nil))
+	runtime.HandleFunc("GET /ws", webSocketNotConfigured)
+}
+
+func webSocketNotConfigured(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "configure authentication, origin rules, and connection limits before enabling WebSocket", http.StatusNotImplemented)
 }

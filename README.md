@@ -9,7 +9,7 @@ Wahoo is a package monorepo for Go, React, and Tailwind SaaS applications. Go ow
 ```bash
 go run ./cmd/wahoo new --local ./acme
 cd acme
-npm install --prefix web
+npm ci --prefix web
 npm run dev --prefix web
 ```
 
@@ -29,13 +29,14 @@ Use `--module example.com/acme` when the project will be published outside this 
 
 ## Install
 
-Install the latest release binary on Linux or macOS:
+Install a pinned release binary on Linux or macOS:
 
 ```bash
-curl --fail --location --silent --show-error https://raw.githubusercontent.com/bjarneo/wahoo/main/install.sh | sh
+curl --fail --location --silent --show-error https://raw.githubusercontent.com/bjarneo/wahoo/v0.3.0/install.sh --output /tmp/wahoo-install.sh
+WAHOO_VERSION=v0.3.0 sh /tmp/wahoo-install.sh
 ```
 
-The script installs `wahoo` to `~/.local/bin`. Set `WAHOO_VERSION=v0.2.2` to install a release tag. Set `WAHOO_INSTALL_DIR` to use a different directory.
+The script installs `wahoo` to `~/.local/bin` and verifies the release checksum. Set `WAHOO_INSTALL_DIR` to use a different directory.
 
 Install from a local checkout:
 

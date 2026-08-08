@@ -5,7 +5,7 @@ Generated with Wahoo. Go owns HTTP, APIs, and graceful shutdown. React renders H
 ## Start
 
 ```bash
-npm install --prefix web
+npm ci --prefix web
 npm run dev --prefix web
 ```
 
