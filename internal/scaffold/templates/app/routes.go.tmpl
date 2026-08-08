@@ -1,0 +1,40 @@
+package app
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/bjarneo/wahoo/realtime"
+	"github.com/bjarneo/wahoo/server"
+)
+
+// Register installs the application routes. Add domain packages here rather
+// than putting business logic in main.go.
+func Register(runtime *server.Server, events *realtime.Hub) {
+	runtime.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		_ = server.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	runtime.Handle("GET /events", events)
+	runtime.Handle("GET /ws", realtime.WebSocket(realtime.Echo(), nil))
+
+	runtime.HandleFunc("POST /api/auth/login", authNotConfigured)
+	runtime.HandleFunc("POST /api/auth/logout", authNotConfigured)
+	runtime.HandleFunc("POST /api/auth/forgot-password", authNotConfigured)
+	runtime.HandleFunc("POST /api/auth/reset-password", authNotConfigured)
+
+	if err := runtime.Page("GET /"); err != nil {
+		panic(err)
+	}
+}
+
+func authNotConfigured(w http.ResponseWriter, _ *http.Request) {
+	_ = server.JSON(w, http.StatusNotImplemented, map[string]string{
+		"error": "connect an auth.Store and session provider; see docs/guide.md",
+	})
+}
+
+func decodeJSON(r *http.Request, target any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(target)
+}

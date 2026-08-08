@@ -1,0 +1,27 @@
+{
+  "name": "__APP_NAME__-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:ssr\" \"npm:dev:go\"",
+    "dev:ssr": "node dev-server.mjs",
+    "dev:go": "WAHOO_SSR_URL=http://127.0.0.1:4173/__wahoo_ssr go run ..",
+    "build": "vite build && vite build --ssr src/entry-server.tsx --outDir dist/server",
+    "start:ssr": "node ssr-server.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "@tailwindcss/vite": "latest",
+    "concurrently": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest"
+  }
+}

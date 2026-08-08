@@ -1,0 +1,57 @@
+package ssr
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+)
+
+// Renderer asks the React SSR worker for a document. It falls back to a
+// client-rendered shell while the worker is unavailable, which keeps health
+// checks and local Go-only development useful.
+type Renderer struct {
+	Endpoint string
+}
+
+// NewRenderer creates a renderer using WAHOO_SSR_URL when set. The endpoint
+// must point to the private worker's /__wahoo_ssr route.
+func NewRenderer() Renderer {
+	return Renderer{Endpoint: os.Getenv("WAHOO_SSR_URL")}
+}
+
+// Render implements server.Renderer.
+func (r Renderer) Render(ctx context.Context, request *http.Request) (string, error) {
+	if r.Endpoint != "" {
+		endpoint, err := url.Parse(r.Endpoint)
+		if err != nil {
+			return "", fmt.Errorf("parse SSR endpoint: %w", err)
+		}
+		query := endpoint.Query()
+		query.Set("url", request.URL.RequestURI())
+		endpoint.RawQuery = query.Encode()
+		upstream, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+		if err != nil {
+			return "", fmt.Errorf("create SSR request: %w", err)
+		}
+		upstream.Header.Set("X-Wahoo-SSR", "1")
+		upstream.Header.Set("Cookie", request.Header.Get("Cookie"))
+		response, err := http.DefaultClient.Do(upstream)
+		if err == nil {
+			defer response.Body.Close()
+			if response.StatusCode < 400 {
+				body, readErr := io.ReadAll(response.Body)
+				if readErr == nil {
+					return string(body), nil
+				}
+			}
+		}
+	}
+	return shell(), nil
+}
+
+func shell() string {
+	return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>__APP_NAME__</title></head><body><div id="root"></div><script type="module" src="/src/entry-client.tsx"></script></body></html>`
+}
