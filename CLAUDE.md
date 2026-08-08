@@ -38,7 +38,7 @@ npm run build --prefix web
 Public Wahoo documentation lives in the `cowl-wahoo` ContextOwl workspace:
 
 ```text
-https://contextowl.co/docs/cowl-wahoo
+http://whiterose.org.contextowl.co/docs/wahoo
 ```
 
 Do not add public documentation pages to this Git repository. Update the ContextOwl articles instead.

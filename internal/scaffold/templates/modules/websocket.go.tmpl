@@ -1,0 +1,10 @@
+package app
+
+import (
+	"github.com/bjarneo/wahoo/realtime"
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerWebSocket(runtime *server.Server) {
+	runtime.Handle("GET /ws", realtime.WebSocket(realtime.Echo(), nil))
+}

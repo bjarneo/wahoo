@@ -41,7 +41,11 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 archive="wahoo_${os}_${arch}.tar.gz"
-base_url="https://github.com/${repository}/releases/${version}/download"
+if [ "$version" = "latest" ]; then
+  base_url="https://github.com/${repository}/releases/latest/download"
+else
+  base_url="https://github.com/${repository}/releases/download/${version}"
+fi
 
 curl --fail --location --silent --show-error "${base_url}/${archive}" --output "${tmp_dir}/${archive}"
 curl --fail --location --silent --show-error "${base_url}/checksums.txt" --output "${tmp_dir}/checksums.txt"

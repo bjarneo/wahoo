@@ -1,0 +1,13 @@
+package app
+
+import (
+	"github.com/bjarneo/wahoo/realtime"
+	"github.com/bjarneo/wahoo/server"
+)
+
+// Events publishes server-sent events for this application process.
+var Events = realtime.NewHub()
+
+func registerSSE(runtime *server.Server) {
+	runtime.Handle("GET /events", Events)
+}

@@ -35,7 +35,7 @@ npm run build --prefix web
 Publish public documentation only to ContextOwl:
 
 ```text
-https://contextowl.co/docs/cowl-wahoo
+http://whiterose.org.contextowl.co/docs/wahoo
 ```
 
 Use DevRel style and ASD-STE100 controlled language. Use short active sentences. Put a working example near the start. State requirements, results, and limits. Use `must` and `do not` for requirements and prohibitions.

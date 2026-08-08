@@ -1,0 +1,20 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerAuth(runtime *server.Server) {
+	runtime.HandleFunc("POST /api/auth/login", authNotConfigured)
+	runtime.HandleFunc("POST /api/auth/logout", authNotConfigured)
+	runtime.HandleFunc("POST /api/auth/forgot-password", authNotConfigured)
+	runtime.HandleFunc("POST /api/auth/reset-password", authNotConfigured)
+}
+
+func authNotConfigured(w http.ResponseWriter, _ *http.Request) {
+	_ = server.JSON(w, http.StatusNotImplemented, map[string]string{
+		"error": "add user storage, sessions, CSRF checks, and mail; see the Wahoo authentication guide",
+	})
+}

@@ -8,7 +8,6 @@ import (
 
 	"__MODULE__/app"
 	"__MODULE__/internal/ssr"
-	"github.com/bjarneo/wahoo/realtime"
 	"github.com/bjarneo/wahoo/server"
 )
 
@@ -21,8 +20,7 @@ func main() {
 	runtime.SetRenderer(ssr.NewRenderer())
 	runtime.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("web/dist/assets"))))
 
-	events := realtime.NewHub()
-	app.Register(runtime, events)
+	app.Register(runtime)
 	if err := runtime.Run(context.Background()); err != nil {
 		logger.Error("server stopped", "err", err)
 		os.Exit(1)
