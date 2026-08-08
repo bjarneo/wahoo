@@ -35,7 +35,7 @@ Install the latest release binary on Linux or macOS:
 curl --fail --location --silent --show-error https://raw.githubusercontent.com/bjarneo/wahoo/main/install.sh | sh
 ```
 
-The script installs `wahoo` to `~/.local/bin`. Set `WAHOO_VERSION=v0.2.0` to install a release tag. Set `WAHOO_INSTALL_DIR` to use a different directory.
+The script installs `wahoo` to `~/.local/bin`. Set `WAHOO_VERSION=v0.2.1` to install a release tag. Set `WAHOO_INSTALL_DIR` to use a different directory.
 
 Install from a local checkout:
 

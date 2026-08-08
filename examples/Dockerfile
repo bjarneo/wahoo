@@ -12,7 +12,7 @@ RUN npm run build
 FROM golang:1.25-alpine AS go
 WORKDIR /src
 
-COPY go.mod go.sum ./
+COPY go.mod ./
 RUN go mod download
 
 COPY . ./

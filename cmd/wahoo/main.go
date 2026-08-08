@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/bjarneo/wahoo/internal/scaffold"
@@ -85,6 +87,9 @@ func newProject(args []string) error {
 	if err := scaffold.Create(directory, *module, frameworkPath, selected...); err != nil {
 		return err
 	}
+	if err := tidyProject(directory); err != nil {
+		return err
+	}
 	fmt.Printf("created %s\n", directory)
 	fmt.Println("next steps:")
 	fmt.Printf("  cd %s\n", flags.Arg(0))
@@ -106,6 +111,9 @@ func addModules(args []string) error {
 		return err
 	}
 	if err := scaffold.Add(directory, modules...); err != nil {
+		return err
+	}
+	if err := tidyProject(directory); err != nil {
 		return err
 	}
 	fmt.Printf("added modules to %s: %s\n", directory, joinModules(modules))
@@ -146,6 +154,21 @@ func joinModules(modules []scaffold.Module) string {
 		parts[i] = string(module)
 	}
 	return strings.Join(parts, ", ")
+}
+
+func tidyProject(directory string) error {
+	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
+	if _, err := os.Stat(goBin); err != nil {
+		goBin = "go"
+	}
+	command := exec.Command(goBin, "mod", "tidy")
+	command.Dir = directory
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("tidy Go module: %w", err)
+	}
+	return nil
 }
 
 func usageError() error {
