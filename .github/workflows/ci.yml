@@ -48,5 +48,5 @@ jobs:
           curl --fail "http://127.0.0.1:${port}/readyz"
           curl --fail "http://127.0.0.1:${port}/openapi.json"
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' --request POST "http://127.0.0.1:${port}/api/auth/login")" = 501
-          docker exec wahoo-scaffold-ci sh -c 'kill -TERM "$(pidof node)"'
+          docker exec wahoo-scaffold-ci sh -c 'set -- $(pidof node); test "$#" -ge 2 && kill -TERM "$1"'
           test "$(docker wait wahoo-scaffold-ci)" -ne 0
