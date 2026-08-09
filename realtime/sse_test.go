@@ -31,3 +31,23 @@ func TestHubDefaults(t *testing.T) {
 		t.Fatalf("max stream age = %s, want %s", hub.maxStreamAge, defaultMaxStreamAge)
 	}
 }
+
+func TestPublishToRejectsInvalidTopic(t *testing.T) {
+	t.Parallel()
+	if err := NewHub().PublishTo("tenant space", Event{}); err == nil {
+		t.Fatal("PublishTo() returned nil for invalid topic")
+	}
+}
+
+func TestPublishCopiesEventData(t *testing.T) {
+	t.Parallel()
+	hub := NewHub()
+	client := make(chan Event, 1)
+	hub.clients[""] = map[chan Event]struct{}{client: {}}
+	data := []byte("before")
+	hub.Publish(Event{Data: data})
+	data[0] = 'a'
+	if got := string((<-client).Data); got != "before" {
+		t.Fatalf("event data = %q", got)
+	}
+}

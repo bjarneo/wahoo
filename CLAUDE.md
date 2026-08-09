@@ -9,6 +9,7 @@ Run these commands from the repository root:
 ```bash
 mise exec go@1.25.12 -- go test ./...
 mise exec go@1.25.12 -- go vet ./...
+mise exec go@1.25.12 -- go test -race ./...
 mise exec go@1.25.12 -- make build VERSION=dev
 sh -n install.sh
 ```
@@ -16,9 +17,11 @@ sh -n install.sh
 Run frontend checks from a generated application:
 
 ```bash
-npm install --prefix web
+npm ci --prefix web
+npm test --prefix web
 npm run typecheck --prefix web
 npm run build --prefix web
+npm run test:ssr --prefix web
 ```
 
 ## Code Rules

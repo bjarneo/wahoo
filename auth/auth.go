@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -58,7 +59,10 @@ func CheckPassword(hash, password string) bool {
 // VerifyLogin returns a user only when the email and password are valid.
 func VerifyLogin(ctx context.Context, store Store, email, password string) (*User, error) {
 	user, err := store.FindUserByEmail(ctx, email)
-	if err != nil || user == nil {
+	if err != nil {
+		return nil, fmt.Errorf("find user by email: %w", err)
+	}
+	if user == nil {
 		_ = bcrypt.CompareHashAndPassword([]byte(dummyPasswordHash), []byte(password))
 		return nil, ErrInvalidCredentials
 	}

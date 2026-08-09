@@ -10,6 +10,6 @@ func registerWebSocket(runtime *server.Server) {
 	runtime.HandleFunc("GET /ws", webSocketNotConfigured)
 }
 
-func webSocketNotConfigured(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "configure authentication, origin rules, and connection limits before enabling WebSocket", http.StatusNotImplemented)
+func webSocketNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure authentication, origin rules, message policy, and connection limits before enabling WebSocket")
 }

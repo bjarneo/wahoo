@@ -1,0 +1,27 @@
+package app
+
+import (
+	"context"
+	"errors"
+
+	"github.com/bjarneo/wahoo/jobs"
+)
+
+// ConfigureJobs is intentionally empty. Return a provider adapter and bounded
+// runner configuration after selecting a queue, retry policy, and tenancy policy.
+func ConfigureJobs() (jobs.Puller, jobs.Handler, jobs.Config) {
+	return nil, nil, jobs.Config{}
+}
+
+// RunJobs runs the configured puller and handler until the context ends.
+func RunJobs(ctx context.Context) error {
+	puller, handler, configuration := ConfigureJobs()
+	if puller == nil || handler == nil {
+		return errors.New("jobs are not configured: implement ConfigureJobs with a puller and handler")
+	}
+	runner, err := jobs.New(puller, handler, configuration)
+	if err != nil {
+		return err
+	}
+	return runner.Run(ctx)
+}

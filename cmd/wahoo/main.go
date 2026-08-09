@@ -33,6 +33,8 @@ func run(args []string) error {
 		return newProject(args[1:])
 	case "add":
 		return addModules(args[1:])
+	case "upgrade":
+		return upgradeProject(args[1:])
 	case "modules":
 		printModules()
 		return nil
@@ -134,6 +136,41 @@ func addModules(args []string) error {
 	return nil
 }
 
+func upgradeProject(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: wahoo upgrade <project-directory> --check|--apply --to <version>")
+	}
+	directory, err := filepath.Abs(args[0])
+	if err != nil {
+		return fmt.Errorf("resolve directory: %w", err)
+	}
+	flags := flag.NewFlagSet("upgrade", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	check := flags.Bool("check", false, "report changes without writing files")
+	apply := flags.Bool("apply", false, "apply the dependency and metadata update")
+	version := flags.String("to", "", "target Wahoo version")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || (*check == *apply) || *version == "" {
+		return errors.New("usage: wahoo upgrade <project-directory> --check|--apply --to <version>")
+	}
+	result, err := scaffold.Upgrade(directory, *version, *apply)
+	if err != nil {
+		return err
+	}
+	if !result.Changed {
+		fmt.Printf("Wahoo dependency is already %s\n", result.To)
+		return nil
+	}
+	if *check {
+		fmt.Printf("would update Wahoo dependency from %s to %s and project metadata\n", result.From, result.To)
+		return nil
+	}
+	fmt.Printf("updated Wahoo dependency from %s to %s and project metadata\n", result.From, result.To)
+	return nil
+}
+
 func promptModules(in io.Reader, out io.Writer) ([]scaffold.Module, error) {
 	reader := bufio.NewReader(in)
 	questions := []struct {
@@ -225,6 +262,7 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  wahoo new [--module path] [--local] [--modules names] [--yes] <directory>")
 	fmt.Println("  wahoo add <project-directory> <module...>")
+	fmt.Println("  wahoo upgrade <project-directory> --check|--apply --to <version>")
 	fmt.Println("  wahoo modules")
 	fmt.Println("  wahoo version")
 }
@@ -234,4 +272,12 @@ func printModules() {
 	fmt.Println("  auth       Account route stubs")
 	fmt.Println("  sse        Server-Sent Events endpoint")
 	fmt.Println("  websocket  Development WebSocket endpoint")
+	fmt.Println("  openapi    Application-owned OpenAPI document")
+	fmt.Println("  jobs       Worker command and job seams")
+	fmt.Println("  uploads    Upload configuration stub")
+	fmt.Println("  mail       Mail configuration stub")
+	fmt.Println("  audit      Audit configuration stub")
+	fmt.Println("  webhooks   Webhook configuration stub")
+	fmt.Println("  entitlements  Entitlement configuration stub")
+	fmt.Println("  billing    Billing configuration stub")
 }

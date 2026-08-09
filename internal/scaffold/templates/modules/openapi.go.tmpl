@@ -1,0 +1,20 @@
+package app
+
+import (
+	_ "embed"
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+// openAPISpec is deliberately application-owned. Edit openapi.json as routes
+// are designed and implemented.
+//go:embed openapi.json
+var openAPISpec []byte
+
+func registerOpenAPI(runtime *server.Server) {
+	runtime.HandleFunc("GET /openapi.json", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = w.Write(openAPISpec)
+	})
+}

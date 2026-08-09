@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -20,51 +21,136 @@ var templates embed.FS
 type Module string
 
 const (
+	// FrameworkVersion is the Wahoo module version used by newly generated projects.
+	FrameworkVersion = "v0.4.0"
+
 	// ModuleAuth adds account route stubs.
 	ModuleAuth Module = "auth"
 	// ModuleSSE adds a server-sent event endpoint.
 	ModuleSSE Module = "sse"
 	// ModuleWebSocket adds a development WebSocket endpoint.
 	ModuleWebSocket Module = "websocket"
+	// ModuleOpenAPI adds an application-owned OpenAPI document.
+	ModuleOpenAPI Module = "openapi"
+	// ModuleJobs adds a worker command and job processing seams.
+	ModuleJobs Module = "jobs"
+	// ModuleUploads adds an upload configuration stub.
+	ModuleUploads Module = "uploads"
+	// ModuleMail adds a mail configuration stub.
+	ModuleMail Module = "mail"
+	// ModuleAudit adds an audit configuration stub.
+	ModuleAudit Module = "audit"
+	// ModuleWebhooks adds a webhook configuration stub.
+	ModuleWebhooks Module = "webhooks"
+	// ModuleEntitlements adds an entitlement configuration stub.
+	ModuleEntitlements Module = "entitlements"
+	// ModuleBilling adds a billing configuration stub.
+	ModuleBilling Module = "billing"
 )
 
 const moduleMarker = "\t// wahoo:modules\n"
 
+const (
+	metadataFormatVersion = 1
+	metadataPath          = ".wahoo/project.json"
+	legacyManifestPath    = ".wahoo/modules.json"
+)
+
 type moduleSpec struct {
-	template     string
-	target       string
+	files        []moduleFile
 	registration string
 	description  string
 }
 
+type moduleFile struct {
+	template string
+	target   string
+}
+
 var moduleSpecs = map[Module]moduleSpec{
 	ModuleAuth: {
-		template:     "templates/modules/auth.go.tmpl",
-		target:       "app/auth.go",
+		files:        []moduleFile{{template: "templates/modules/auth.go.tmpl", target: "app/auth.go"}},
 		registration: "\tregisterAuth(runtime)\n",
 		description:  "account route stubs",
 	},
 	ModuleSSE: {
-		template:     "templates/modules/sse.go.tmpl",
-		target:       "app/sse.go",
+		files:        []moduleFile{{template: "templates/modules/sse.go.tmpl", target: "app/sse.go"}},
 		registration: "\tregisterSSE(runtime)\n",
 		description:  "server-sent events",
 	},
 	ModuleWebSocket: {
-		template:     "templates/modules/websocket.go.tmpl",
-		target:       "app/websocket.go",
+		files:        []moduleFile{{template: "templates/modules/websocket.go.tmpl", target: "app/websocket.go"}},
 		registration: "\tregisterWebSocket(runtime)\n",
 		description:  "WebSocket endpoint",
+	},
+	ModuleOpenAPI: {
+		files: []moduleFile{
+			{template: "templates/modules/openapi.go.tmpl", target: "app/openapi.go"},
+			{template: "templates/modules/openapi.json.tmpl", target: "app/openapi.json"},
+		},
+		registration: "\tregisterOpenAPI(runtime)\n",
+		description:  "application-owned OpenAPI document",
+	},
+	ModuleJobs: {
+		files: []moduleFile{
+			{template: "templates/modules/jobs.go.tmpl", target: "app/jobs.go"},
+			{template: "templates/modules/worker-main.go.tmpl", target: "cmd/worker/main.go"},
+		},
+		description: "worker command and job seams",
+	},
+	ModuleUploads: {
+		files:        []moduleFile{{template: "templates/modules/uploads.go.tmpl", target: "app/uploads.go"}},
+		registration: "\tregisterUploads(runtime)\n",
+		description:  "upload configuration stub",
+	},
+	ModuleMail: {
+		files:        []moduleFile{{template: "templates/modules/mail.go.tmpl", target: "app/mail.go"}},
+		registration: "\tregisterMail(runtime)\n",
+		description:  "mail configuration stub",
+	},
+	ModuleAudit: {
+		files:        []moduleFile{{template: "templates/modules/audit.go.tmpl", target: "app/audit.go"}},
+		registration: "\tregisterAudit(runtime)\n",
+		description:  "audit configuration stub",
+	},
+	ModuleWebhooks: {
+		files:        []moduleFile{{template: "templates/modules/webhooks.go.tmpl", target: "app/webhooks.go"}},
+		registration: "\tregisterWebhooks(runtime)\n",
+		description:  "webhook configuration stub",
+	},
+	ModuleEntitlements: {
+		files:        []moduleFile{{template: "templates/modules/entitlements.go.tmpl", target: "app/entitlements.go"}},
+		registration: "\tregisterEntitlements(runtime)\n",
+		description:  "entitlement configuration stub",
+	},
+	ModuleBilling: {
+		files:        []moduleFile{{template: "templates/modules/billing.go.tmpl", target: "app/billing.go"}},
+		registration: "\tregisterBilling(runtime)\n",
+		description:  "billing configuration stub",
 	},
 }
 
 type manifest struct {
-	Modules []Module `json:"modules"`
+	FormatVersion    int      `json:"format_version"`
+	FrameworkVersion string   `json:"framework_version"`
+	Modules          []Module `json:"modules"`
 }
 
 // Modules returns the modules that a Wahoo project can install.
 func Modules() []Module {
-	return []Module{ModuleAuth, ModuleSSE, ModuleWebSocket}
+	return []Module{
+		ModuleAuth,
+		ModuleSSE,
+		ModuleWebSocket,
+		ModuleOpenAPI,
+		ModuleJobs,
+		ModuleUploads,
+		ModuleMail,
+		ModuleAudit,
+		ModuleWebhooks,
+		ModuleEntitlements,
+		ModuleBilling,
+	}
 }
 
 // ParseModules validates comma-separated module values and removes duplicates.
@@ -111,6 +197,12 @@ func Create(directory, module, frameworkPath string, modules ...Module) error {
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return fmt.Errorf("create project directory: %w", err)
 	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return fmt.Errorf("open project root: %w", err)
+	}
+	defer root.Close()
+
 	replace := ""
 	if frameworkPath != "" {
 		replace = "replace github.com/bjarneo/wahoo => " + filepath.ToSlash(frameworkPath)
@@ -130,32 +222,26 @@ func Create(directory, module, frameworkPath string, modules ...Module) error {
 		if strings.HasSuffix(relative, ".tmpl") {
 			relative = strings.TrimSuffix(relative, ".tmpl")
 		}
-		target := filepath.Join(directory, filepath.FromSlash(relative))
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return fmt.Errorf("create %s: %w", filepath.Dir(target), err)
+		parent := filepath.ToSlash(filepath.Dir(relative))
+		if parent != "." {
+			if err := root.MkdirAll(parent, 0o755); err != nil {
+				return fmt.Errorf("create %s: %w", parent, err)
+			}
 		}
 		data, err := fs.ReadFile(templates, path)
 		if err != nil {
 			return fmt.Errorf("read template %s: %w", relative, err)
 		}
-		content := strings.ReplaceAll(string(data), "__MODULE__", module)
-		content = strings.ReplaceAll(content, "__APP_NAME__", appName)
-		content = strings.ReplaceAll(content, "__REPLACE_LINE__", replace)
-		content = strings.ReplaceAll(content, "__MODULES__", moduleList(modules))
-		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", target, err)
+		content := renderTemplate(data, module, appName, replace, modules)
+		if err := writeNewFile(root, filepath.ToSlash(relative), content, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", relative, err)
 		}
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("scaffold project: %w", err)
 	}
-	root, err := os.OpenRoot(directory)
-	if err != nil {
-		return fmt.Errorf("open project root: %w", err)
-	}
-	defer root.Close()
-	if err := writeManifest(root, manifest{}); err != nil {
+	if err := writeManifest(root, manifest{FrameworkVersion: FrameworkVersion}); err != nil {
 		return err
 	}
 	if len(modules) == 0 {
@@ -186,7 +272,7 @@ func Add(directory string, modules ...Module) error {
 		return fmt.Errorf("open project root: %w", err)
 	}
 	defer root.Close()
-	if err := rejectManagedSymlinks(root); err != nil {
+	if err := rejectManagedSymlinks(root, "app", ".wahoo", "app/routes.go", metadataPath, legacyManifestPath, "go.mod"); err != nil {
 		return err
 	}
 
@@ -201,6 +287,10 @@ func Add(directory string, modules ...Module) error {
 	if !strings.Contains(string(routes), moduleMarker) {
 		return errors.New("application routes do not contain the Wahoo module marker")
 	}
+	modulePath, err := projectModulePath(root)
+	if err != nil {
+		return err
+	}
 
 	var additions []Module
 	for _, module := range modules {
@@ -208,10 +298,18 @@ func Add(directory string, modules ...Module) error {
 			continue
 		}
 		spec := moduleSpecs[module]
-		if _, err := root.Lstat(spec.target); err == nil {
-			return fmt.Errorf("module %q target already exists: %s", module, spec.target)
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("inspect module %q target: %w", module, err)
+		for _, file := range spec.files {
+			if err := rejectTargetSymlinks(root, file.target); err != nil {
+				return err
+			}
+			if info, err := root.Lstat(file.target); err == nil {
+				if info.Mode()&os.ModeSymlink != 0 {
+					return fmt.Errorf("managed path %s must not be a symbolic link", file.target)
+				}
+				return fmt.Errorf("module %q target already exists: %s", module, file.target)
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("inspect module %q target: %w", module, err)
+			}
 		}
 		additions = append(additions, module)
 	}
@@ -219,26 +317,66 @@ func Add(directory string, modules ...Module) error {
 		return nil
 	}
 
+	appName := ProjectName(filepath.Base(directory))
+	routesChanged := false
 	for _, module := range additions {
 		spec := moduleSpecs[module]
-		data, err := fs.ReadFile(templates, spec.template)
-		if err != nil {
-			return fmt.Errorf("read module %q template: %w", module, err)
+		for _, file := range spec.files {
+			data, err := fs.ReadFile(templates, file.template)
+			if err != nil {
+				return fmt.Errorf("read module %q template: %w", module, err)
+			}
+			if err := root.MkdirAll(filepath.ToSlash(filepath.Dir(file.target)), 0o755); err != nil {
+				return fmt.Errorf("create module %q directory: %w", module, err)
+			}
+			content := renderTemplate(data, modulePath, appName, "", nil)
+			if err := writeNewFile(root, file.target, content, 0o644); err != nil {
+				return fmt.Errorf("write module %q: %w", module, err)
+			}
 		}
-		if err := writeNewFile(root, spec.target, data, 0o644); err != nil {
-			return fmt.Errorf("write module %q: %w", module, err)
+		if spec.registration != "" {
+			routes = []byte(strings.Replace(string(routes), moduleMarker, spec.registration+moduleMarker, 1))
+			routesChanged = true
 		}
-		routes = []byte(strings.Replace(string(routes), moduleMarker, spec.registration+moduleMarker, 1))
 		project.Modules = append(project.Modules, module)
 	}
-	if err := writeAtomic(root, "app/routes.go", routes, 0o644); err != nil {
-		return fmt.Errorf("write application routes: %w", err)
+	if routesChanged {
+		if err := writeAtomic(root, "app/routes.go", routes, 0o644); err != nil {
+			return fmt.Errorf("write application routes: %w", err)
+		}
 	}
+	frameworkVersion, err := frameworkDependencyVersion(root)
+	if err != nil {
+		return err
+	}
+	project.FrameworkVersion = frameworkVersion
 	return writeManifest(root, project)
 }
 
-func rejectManagedSymlinks(root *os.Root) error {
-	for _, path := range []string{"app", ".wahoo", "app/routes.go", ".wahoo/modules.json"} {
+func rejectManagedSymlinks(root *os.Root, paths ...string) error {
+	for _, path := range paths {
+		info, err := root.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect managed path %s: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("managed path %s must not be a symbolic link", path)
+		}
+	}
+	return nil
+}
+
+func rejectTargetSymlinks(root *os.Root, target string) error {
+	path := ""
+	for _, part := range strings.Split(filepath.ToSlash(target), "/") {
+		if path == "" {
+			path = part
+		} else {
+			path += "/" + part
+		}
 		info, err := root.Lstat(path)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -254,16 +392,25 @@ func rejectManagedSymlinks(root *os.Root) error {
 }
 
 func readManifest(root *os.Root) (manifest, error) {
-	data, err := root.ReadFile(".wahoo/modules.json")
+	data, err := root.ReadFile(metadataPath)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return manifest{}, errors.New("not a Wahoo project: .wahoo/modules.json is missing")
+		if !errors.Is(err, fs.ErrNotExist) {
+			return manifest{}, fmt.Errorf("read project metadata: %w", err)
 		}
-		return manifest{}, fmt.Errorf("read module manifest: %w", err)
+		data, err = root.ReadFile(legacyManifestPath)
+		if errors.Is(err, fs.ErrNotExist) {
+			return manifest{}, errors.New("not a Wahoo project: .wahoo/project.json is missing")
+		}
+		if err != nil {
+			return manifest{}, fmt.Errorf("read legacy module manifest: %w", err)
+		}
 	}
 	var project manifest
 	if err := json.Unmarshal(data, &project); err != nil {
-		return manifest{}, fmt.Errorf("decode module manifest: %w", err)
+		return manifest{}, fmt.Errorf("decode project metadata: %w", err)
+	}
+	if project.FormatVersion != 0 && project.FormatVersion != metadataFormatVersion {
+		return manifest{}, fmt.Errorf("unsupported project metadata format %d", project.FormatVersion)
 	}
 	modules, err := ParseModules(moduleStrings(project.Modules))
 	if err != nil {
@@ -274,19 +421,20 @@ func readManifest(root *os.Root) (manifest, error) {
 }
 
 func writeManifest(root *os.Root, project manifest) error {
+	project.FormatVersion = metadataFormatVersion
 	if project.Modules == nil {
 		project.Modules = []Module{}
 	}
 	if err := root.MkdirAll(".wahoo", 0o755); err != nil {
-		return fmt.Errorf("create module manifest directory: %w", err)
+		return fmt.Errorf("create project metadata directory: %w", err)
 	}
 	data, err := json.MarshalIndent(project, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode module manifest: %w", err)
+		return fmt.Errorf("encode project metadata: %w", err)
 	}
 	data = append(data, '\n')
-	if err := writeAtomic(root, ".wahoo/modules.json", data, 0o644); err != nil {
-		return fmt.Errorf("write module manifest: %w", err)
+	if err := writeAtomic(root, metadataPath, data, 0o644); err != nil {
+		return fmt.Errorf("write project metadata: %w", err)
 	}
 	return nil
 }
@@ -296,11 +444,18 @@ func writeNewFile(root *os.Root, path string, data []byte, perm fs.FileMode) err
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 	if written, err := file.Write(data); err != nil {
+		file.Close()
+		root.Remove(path)
 		return err
 	} else if written != len(data) {
+		file.Close()
+		root.Remove(path)
 		return io.ErrShortWrite
+	}
+	if err := file.Close(); err != nil {
+		root.Remove(path)
+		return err
 	}
 	return nil
 }
@@ -323,6 +478,156 @@ func writeAtomic(root *os.Root, path string, data []byte, perm fs.FileMode) erro
 		return err
 	}
 	return root.Rename(temporary, path)
+}
+
+// Upgrade updates only the Wahoo dependency and project metadata. When apply
+// is false it reports whether either file would change without writing files.
+func Upgrade(directory, version string, apply bool) (UpgradeResult, error) {
+	if !validFrameworkVersion(version) {
+		return UpgradeResult{}, fmt.Errorf("invalid Wahoo version %q", version)
+	}
+	info, err := os.Lstat(directory)
+	if err != nil {
+		return UpgradeResult{}, fmt.Errorf("inspect project directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return UpgradeResult{}, fmt.Errorf("project directory %s must not be a symbolic link", directory)
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return UpgradeResult{}, fmt.Errorf("open project root: %w", err)
+	}
+	defer root.Close()
+	if err := rejectManagedSymlinks(root, ".wahoo", metadataPath, legacyManifestPath, "go.mod"); err != nil {
+		return UpgradeResult{}, err
+	}
+
+	project, err := readManifest(root)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+	goMod, err := root.ReadFile("go.mod")
+	if err != nil {
+		return UpgradeResult{}, fmt.Errorf("read Go module: %w", err)
+	}
+	current, updatedGoMod, err := replaceFrameworkRequirement(goMod, version)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+	projectChanged := project.FormatVersion != metadataFormatVersion || project.FrameworkVersion != version
+	result := UpgradeResult{
+		From:    current,
+		To:      version,
+		Changed: current != version || projectChanged,
+	}
+	if !apply || !result.Changed {
+		return result, nil
+	}
+	if current != version {
+		if err := writeAtomic(root, "go.mod", updatedGoMod, 0o644); err != nil {
+			return UpgradeResult{}, fmt.Errorf("write Go module: %w", err)
+		}
+	}
+	if projectChanged {
+		project.FrameworkVersion = version
+		if err := writeManifest(root, project); err != nil {
+			return UpgradeResult{}, err
+		}
+	}
+	return result, nil
+}
+
+// UpgradeResult describes a Wahoo dependency upgrade check or application.
+type UpgradeResult struct {
+	From    string
+	To      string
+	Changed bool
+}
+
+var frameworkVersionPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z.-]+)?$`)
+
+func validFrameworkVersion(version string) bool {
+	return frameworkVersionPattern.MatchString(version)
+}
+
+func frameworkDependencyVersion(root *os.Root) (string, error) {
+	data, err := root.ReadFile("go.mod")
+	if err != nil {
+		return "", fmt.Errorf("read Go module: %w", err)
+	}
+	version, _, err := replaceFrameworkRequirement(data, "")
+	return version, err
+}
+
+func projectModulePath(root *os.Root) (string, error) {
+	data, err := root.ReadFile("go.mod")
+	if err != nil {
+		return "", fmt.Errorf("read Go module: %w", err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "module" {
+			return fields[1], nil
+		}
+	}
+	return "", errors.New("Go module does not declare a module path")
+}
+
+func replaceFrameworkRequirement(data []byte, replacement string) (string, []byte, error) {
+	lines := strings.SplitAfter(string(data), "\n")
+	inRequireBlock := false
+	found := 0
+	current := ""
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "require (") {
+			inRequireBlock = true
+			continue
+		}
+		if inRequireBlock && trimmed == ")" {
+			inRequireBlock = false
+			continue
+		}
+
+		candidate := ""
+		if inRequireBlock {
+			candidate = trimmed
+		} else if strings.HasPrefix(trimmed, "require ") {
+			candidate = strings.TrimSpace(strings.TrimPrefix(trimmed, "require "))
+		}
+		fields := strings.Fields(candidate)
+		if len(fields) < 2 || fields[0] != "github.com/bjarneo/wahoo" {
+			continue
+		}
+		found++
+		if found > 1 {
+			return "", nil, errors.New("Go module lists Wahoo more than once")
+		}
+		current = fields[1]
+		if replacement == "" || replacement == current {
+			continue
+		}
+		moduleOffset := strings.Index(line, "github.com/bjarneo/wahoo") + len("github.com/bjarneo/wahoo")
+		versionOffset := strings.Index(line[moduleOffset:], current)
+		if versionOffset < 0 {
+			return "", nil, errors.New("locate Wahoo version in Go module")
+		}
+		versionOffset += moduleOffset
+		lines[index] = line[:versionOffset] + replacement + line[versionOffset+len(current):]
+	}
+	if found == 0 {
+		return "", nil, errors.New("Go module does not require github.com/bjarneo/wahoo")
+	}
+	return current, []byte(strings.Join(lines, "")), nil
+}
+
+func renderTemplate(data []byte, module, appName, replace string, modules []Module) []byte {
+	content := strings.ReplaceAll(string(data), "__MODULE__", module)
+	content = strings.ReplaceAll(content, "__APP_NAME__", appName)
+	content = strings.ReplaceAll(content, "__REPLACE_LINE__", replace)
+	content = strings.ReplaceAll(content, "__MODULES__", moduleList(modules))
+	content = strings.ReplaceAll(content, "__FRAMEWORK_VERSION__", FrameworkVersion)
+	return []byte(content)
 }
 
 func moduleList(modules []Module) string {

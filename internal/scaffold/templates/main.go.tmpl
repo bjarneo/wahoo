@@ -7,29 +7,33 @@ import (
 	"os"
 
 	"__MODULE__/app"
+	"__MODULE__/internal/config"
 	"__MODULE__/internal/ssr"
 	"github.com/bjarneo/wahoo/server"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	configuration, err := config.Load()
+	if err != nil {
+		logger.Error("load configuration", "err", err)
+		os.Exit(1)
+	}
 	runtime := server.New(server.Config{
-		Addr:   env("PORT", ":8080"),
+		Addr:   configuration.HTTPAddress,
 		Logger: logger,
 	})
-	runtime.SetRenderer(ssr.NewRenderer())
+	// This policy is declared in internal/config, not inferred by the framework.
+	runtime.Use(
+		server.SecurityHeaders(configuration.SecurityHeaders),
+		server.MaxBodyBytes(configuration.JSONBodyLimit),
+	)
+	runtime.SetRenderer(ssr.NewRenderer(configuration.SSRURL, configuration.ViteDevURL))
 	runtime.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("web/dist/assets"))))
 
-	app.Register(runtime)
+	app.Register(runtime, configuration.JSONBodyLimit)
 	if err := runtime.Run(context.Background()); err != nil {
 		logger.Error("server stopped", "err", err)
 		os.Exit(1)
 	}
-}
-
-func env(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
 }

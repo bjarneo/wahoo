@@ -2,6 +2,8 @@ package main
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,5 +32,27 @@ func TestPromptModulesRejectsInvalidAnswer(t *testing.T) {
 	_, err := promptModules(strings.NewReader("maybe\n"), io.Discard)
 	if err == nil {
 		t.Fatal("promptModules() returned nil for an invalid answer")
+	}
+}
+
+func TestUpgradeProjectCheckDoesNotWrite(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "acme")
+	if err := scaffold.Create(directory, "example.com/acme", "/framework"); err != nil {
+		t.Fatal(err)
+	}
+	goModPath := filepath.Join(directory, "go.mod")
+	before, err := os.ReadFile(goModPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := upgradeProject([]string{directory, "--check", "--to", "v0.3.1"}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(goModPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("upgrade --check changed go.mod")
 	}
 }

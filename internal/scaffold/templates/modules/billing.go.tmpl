@@ -1,0 +1,15 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerBilling(runtime *server.Server) {
+	runtime.HandleFunc("GET /api/v1/billing", billingNotConfigured)
+}
+
+func billingNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure a billing provider, webhook reconciliation, entitlement mapping, usage policy, and authorization before enabling billing")
+}

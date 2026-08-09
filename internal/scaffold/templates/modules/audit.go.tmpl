@@ -1,0 +1,15 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerAudit(runtime *server.Server) {
+	runtime.HandleFunc("GET /api/v1/audit-events", auditNotConfigured)
+}
+
+func auditNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure an audit event store, retention policy, access controls, and tenant boundaries before enabling audit access")
+}

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: internal/scaffold/templates/web/package-lock.json
+      - name: Test Go packages
+        run: go test ./...
+      - name: Test Go packages with the race detector
+        run: go test -race ./...
+      - name: Vet Go packages
+        run: go vet ./...
+      - name: Generate project and validate frontend
+        env:
+          PROJECT: ${{ runner.temp }}/wahoo-scaffold-ci
+        run: |
+          go run ./cmd/wahoo new --local --modules auth,sse,websocket,openapi,jobs,uploads,mail,audit,webhooks,entitlements,billing "$PROJECT"
+          go -C "$PROJECT" test ./...
+          npm ci --prefix "$PROJECT/web"
+          npm test --prefix "$PROJECT/web"
+          npm run typecheck --prefix "$PROJECT/web"
+          npm run build --prefix "$PROJECT/web"
+          npm run test:ssr --prefix "$PROJECT/web"
+          docker build --file "$PROJECT/Dockerfile.example" --tag wahoo-scaffold-ci "$PROJECT"
+          docker run --detach --rm --name wahoo-scaffold-ci --publish 127.0.0.1::8080 wahoo-scaffold-ci
+          port="$(docker port wahoo-scaffold-ci 8080/tcp)"
+          port="${port##*:}"
+          curl --fail --retry 10 --retry-all-errors --retry-delay 1 "http://127.0.0.1:${port}/healthz"
+          curl --fail "http://127.0.0.1:${port}/readyz"
+          curl --fail "http://127.0.0.1:${port}/openapi.json"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --request POST "http://127.0.0.1:${port}/api/auth/login")" = 501
+          docker exec wahoo-scaffold-ci sh -c 'kill -TERM "$(pidof node)"'
+          test "$(docker wait wahoo-scaffold-ci)" -ne 0

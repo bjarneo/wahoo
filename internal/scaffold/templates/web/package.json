@@ -8,6 +8,8 @@
     "dev:go": "WAHOO_SSR_URL=http://127.0.0.1:4173/__wahoo_ssr go run ..",
     "build": "vite build && vite build --ssr src/entry-server.tsx --outDir dist/server",
     "start:ssr": "node ssr-server.mjs",
+    "test": "node --test test/worker.test.mjs",
+    "test:ssr": "node --test test/ssr-document.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

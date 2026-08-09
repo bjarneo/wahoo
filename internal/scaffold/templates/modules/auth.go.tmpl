@@ -13,8 +13,6 @@ func registerAuth(runtime *server.Server) {
 	runtime.HandleFunc("POST /api/auth/reset-password", authNotConfigured)
 }
 
-func authNotConfigured(w http.ResponseWriter, _ *http.Request) {
-	_ = server.JSON(w, http.StatusNotImplemented, map[string]string{
-		"error": "add user storage, sessions, CSRF checks, and mail; see the Wahoo authentication guide",
-	})
+func authNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "add user storage, sessions, CSRF checks, and mail before enabling authentication")
 }

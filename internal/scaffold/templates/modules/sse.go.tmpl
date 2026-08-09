@@ -14,6 +14,6 @@ func registerSSE(runtime *server.Server) {
 	runtime.HandleFunc("GET /events", sseNotConfigured)
 }
 
-func sseNotConfigured(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "configure authentication and tenant authorization before enabling SSE", http.StatusNotImplemented)
+func sseNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure authentication, tenant authorization, topic selection, and connection limits before enabling SSE")
 }

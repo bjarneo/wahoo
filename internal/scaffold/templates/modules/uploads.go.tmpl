@@ -1,0 +1,15 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerUploads(runtime *server.Server) {
+	runtime.HandleFunc("POST /api/v1/uploads", uploadsNotConfigured)
+}
+
+func uploadsNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure an upload storage provider, authorization, size limits, and content validation before enabling uploads")
+}

@@ -1,0 +1,15 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerMail(runtime *server.Server) {
+	runtime.HandleFunc("POST /api/v1/mail/send", mailNotConfigured)
+}
+
+func mailNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure a mail provider, sender identity, templates, rate limits, and authorization before enabling mail")
+}

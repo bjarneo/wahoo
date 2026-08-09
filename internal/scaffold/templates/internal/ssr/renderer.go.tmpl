@@ -2,61 +2,96 @@ package ssr
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/bjarneo/wahoo/server"
 )
 
 const maxDocumentBytes = 2 << 20
 
 var client = &http.Client{Timeout: 5 * time.Second}
 
-// Renderer asks the React SSR worker for a document. It falls back to a
-// client-rendered shell while the worker is unavailable, which keeps health
-// checks and local Go-only development useful.
+// Renderer asks the private React SSR worker for a document. Development can
+// fall back to Vite, but production requires the worker.
 type Renderer struct {
-	Endpoint string
+	Endpoint   string
+	ViteDevURL string
+	production bool
 }
 
-// NewRenderer creates a renderer using WAHOO_SSR_URL when set. The endpoint
-// must point to the private worker's /__wahoo_ssr route.
-func NewRenderer() Renderer {
-	return Renderer{Endpoint: os.Getenv("WAHOO_SSR_URL")}
+// NewRenderer creates a renderer from application configuration. Endpoint
+// normally comes from WAHOO_SSR_URL and must point at /__wahoo_ssr.
+func NewRenderer(endpoint, viteDevURL string) Renderer {
+	return Renderer{
+		Endpoint:   strings.TrimSpace(endpoint),
+		ViteDevURL: strings.TrimRight(viteDevURL, "/"),
+		production: os.Getenv("NODE_ENV") == "production",
+	}
 }
 
 // Render implements server.Renderer.
 func (r Renderer) Render(ctx context.Context, request *http.Request) (string, error) {
-	if r.Endpoint != "" {
-		endpoint, err := url.Parse(r.Endpoint)
-		if err != nil {
-			return "", fmt.Errorf("parse SSR endpoint: %w", err)
-		}
-		query := endpoint.Query()
-		query.Set("url", request.URL.RequestURI())
-		endpoint.RawQuery = query.Encode()
-		upstream, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-		if err != nil {
-			return "", fmt.Errorf("create SSR request: %w", err)
-		}
-		upstream.Header.Set("X-Wahoo-SSR", "1")
-		upstream.Header.Set("Cookie", request.Header.Get("Cookie"))
-		response, err := client.Do(upstream)
-		if err == nil {
-			defer response.Body.Close()
-			if response.StatusCode < 400 {
-				body, readErr := io.ReadAll(io.LimitReader(response.Body, maxDocumentBytes+1))
-				if readErr == nil && len(body) <= maxDocumentBytes {
-					return string(body), nil
-				}
-			}
-		}
+	document, err := r.document(ctx, request)
+	if err == nil {
+		return document, nil
 	}
-	return shell(), nil
+	if r.production {
+		return "", fmt.Errorf("SSR worker is required in production: %w", err)
+	}
+	return r.shell(), nil
 }
 
-func shell() string {
-	return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>__APP_NAME__</title></head><body><div id="root"></div><script type="module" src="/src/entry-client.tsx"></script></body></html>`
+func (r Renderer) document(ctx context.Context, request *http.Request) (string, error) {
+	if r.Endpoint == "" {
+		return "", errors.New("configure WAHOO_SSR_URL for the private SSR worker")
+	}
+	endpoint, err := url.Parse(r.Endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse SSR endpoint: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("url", request.URL.RequestURI())
+	endpoint.RawQuery = query.Encode()
+	upstream, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("create SSR request: %w", err)
+	}
+	upstream.Header.Set("X-Wahoo-SSR", "1")
+	upstream.Header.Set("Cookie", request.Header.Get("Cookie"))
+	requestID := server.RequestID(ctx)
+	if requestID == "" {
+		requestID = request.Header.Get("X-Request-ID")
+	}
+	if requestID != "" {
+		upstream.Header.Set("X-Request-ID", requestID)
+	}
+	response, err := client.Do(upstream)
+	if err != nil {
+		return "", fmt.Errorf("request SSR worker: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return "", fmt.Errorf("SSR worker returned %s", response.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxDocumentBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read SSR document: %w", err)
+	}
+	if len(body) > maxDocumentBytes {
+		return "", errors.New("SSR document exceeds size limit")
+	}
+	return string(body), nil
+}
+
+func (r Renderer) shell() string {
+	viteDevURL := html.EscapeString(r.ViteDevURL)
+	return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>__APP_NAME__</title></head><body><div id="root"></div><script type="module" src="` + viteDevURL + `/@vite/client"></script><script type="module" src="` + viteDevURL + `/src/entry-client.tsx"></script></body></html>`
 }

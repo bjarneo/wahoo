@@ -32,8 +32,8 @@ Use `--module example.com/acme` when the project will be published outside this 
 Install a pinned release binary on Linux or macOS:
 
 ```bash
-curl --fail --location --silent --show-error https://raw.githubusercontent.com/bjarneo/wahoo/v0.3.0/install.sh --output /tmp/wahoo-install.sh
-WAHOO_VERSION=v0.3.0 sh /tmp/wahoo-install.sh
+curl --fail --location --silent --show-error https://raw.githubusercontent.com/bjarneo/wahoo/v0.4.0/install.sh --output /tmp/wahoo-install.sh
+WAHOO_VERSION=v0.4.0 sh /tmp/wahoo-install.sh
 ```
 
 The script installs `wahoo` to `~/.local/bin` and verifies the release checksum. Set `WAHOO_INSTALL_DIR` to use a different directory.

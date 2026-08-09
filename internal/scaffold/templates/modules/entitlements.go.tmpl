@@ -1,0 +1,15 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerEntitlements(runtime *server.Server) {
+	runtime.HandleFunc("GET /api/v1/entitlements", entitlementsNotConfigured)
+}
+
+func entitlementsNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure an entitlement source, authorization rules, cache policy, and billing integration before enabling entitlements")
+}

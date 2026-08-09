@@ -1,0 +1,15 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/bjarneo/wahoo/server"
+)
+
+func registerWebhooks(runtime *server.Server) {
+	runtime.HandleFunc("POST /api/v1/webhooks", webhooksNotConfigured)
+}
+
+func webhooksNotConfigured(w http.ResponseWriter, r *http.Request) {
+	notConfigured(w, r, "configure webhook signature verification, replay protection, routing, and idempotency before enabling webhooks")
+}

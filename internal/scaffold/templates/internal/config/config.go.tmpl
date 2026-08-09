@@ -1,0 +1,96 @@
+// Package config loads application-owned runtime configuration.
+package config
+
+import (
+	"fmt"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/bjarneo/wahoo/api"
+	"github.com/bjarneo/wahoo/server"
+)
+
+const defaultViteDevURL = "http://127.0.0.1:4173"
+
+// Config contains the generated application's explicit runtime policy.
+type Config struct {
+	HTTPAddress     string
+	SSRURL          string
+	ViteDevURL      string
+	JSONBodyLimit   int64
+	SecurityHeaders server.HeaderPolicy
+}
+
+// Load reads environment configuration without applying framework policy.
+func Load() (Config, error) {
+	jsonBodyLimit, err := jsonBodyLimit()
+	if err != nil {
+		return Config{}, err
+	}
+	viteDevURL, err := originURL(env("WAHOO_VITE_DEV_URL", defaultViteDevURL))
+	if err != nil {
+		return Config{}, fmt.Errorf("WAHOO_VITE_DEV_URL: %w", err)
+	}
+	ssrURL := strings.TrimSpace(os.Getenv("WAHOO_SSR_URL"))
+	if ssrURL != "" {
+		if _, err := httpURL(ssrURL); err != nil {
+			return Config{}, fmt.Errorf("WAHOO_SSR_URL: %w", err)
+		}
+	}
+	return Config{
+		HTTPAddress:   env("WAHOO_HTTP_ADDR", env("PORT", ":8080")),
+		SSRURL:        ssrURL,
+		ViteDevURL:    viteDevURL,
+		JSONBodyLimit: jsonBodyLimit,
+		// Keep this policy application-owned. Expand it only after reviewing the
+		// application's browser and deployment requirements.
+		SecurityHeaders: server.HeaderPolicy{
+			FrameOptions:   "SAMEORIGIN",
+			NoSniff:        true,
+			ReferrerPolicy: "strict-origin-when-cross-origin",
+		},
+	}, nil
+}
+
+func jsonBodyLimit() (int64, error) {
+	value := strings.TrimSpace(os.Getenv("WAHOO_JSON_BODY_LIMIT"))
+	if value == "" {
+		return api.DefaultMaxBodyBytes, nil
+	}
+	limit, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || limit < 1 || limit > api.MaxBodyBytes {
+		return 0, fmt.Errorf("must be an integer from 1 to %d bytes", api.MaxBodyBytes)
+	}
+	return limit, nil
+}
+
+func originURL(value string) (string, error) {
+	parsed, err := httpURL(value)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("must be an origin without a path, query, or fragment")
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func httpURL(value string) (*url.URL, error) {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+		return nil, fmt.Errorf("must be an absolute HTTP URL without user credentials")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("must use http or https")
+	}
+	return parsed, nil
+}
+
+func env(key, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return fallback
+}

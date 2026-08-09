@@ -1,17 +1,28 @@
 package app
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
+	"time"
 
+	"github.com/bjarneo/wahoo/api"
 	"github.com/bjarneo/wahoo/server"
 )
 
 // Register installs the application routes. Add domain packages here rather
 // than putting business logic in main.go.
-func Register(runtime *server.Server) {
+func Register(runtime *server.Server, jsonBodyLimit int64) {
 	runtime.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_ = server.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	runtime.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 250*time.Millisecond)
+		defer cancel()
+		if err := readiness(ctx); err != nil {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		_ = server.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
 	// wahoo:modules
@@ -21,8 +32,17 @@ func Register(runtime *server.Server) {
 	}
 }
 
-func decodeJSON(r *http.Request, target any) error {
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
+// readiness is application-owned. Add bounded dependency checks here when the
+// application gains dependencies that must be available before it accepts traffic.
+func readiness(context.Context) error {
+	return nil
+}
+
+// decodeJSON uses Wahoo's strict, bounded JSON decoder for application APIs.
+func decodeJSON(w http.ResponseWriter, r *http.Request, target any, limit int64) error {
+	return api.DecodeJSON(w, r, target, limit)
+}
+
+func notConfigured(w http.ResponseWriter, r *http.Request, message string) {
+	_ = api.WriteError(w, r, http.StatusNotImplemented, "not_configured", message)
 }

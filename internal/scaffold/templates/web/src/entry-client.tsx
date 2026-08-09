@@ -1,11 +1,17 @@
 import { StrictMode, startTransition } from "react";
-import { hydrateRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 
 startTransition(() => {
-  hydrateRoot(
-    document.getElementById("root")!,
-    <StrictMode><App /></StrictMode>,
-  );
+  const root = document.getElementById("root");
+  if (!root) {
+    return;
+  }
+  const app = <StrictMode><App /></StrictMode>;
+  if (root.hasChildNodes()) {
+    hydrateRoot(root, app);
+  } else {
+    createRoot(root).render(app);
+  }
 });
